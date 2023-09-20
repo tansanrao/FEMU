@@ -6,6 +6,12 @@
 #define INVALID_PPA     (~(0ULL))
 #define INVALID_LPN     (~(0ULL))
 #define UNMAPPED_PPA    (~(0ULL))
+#define UNMAPPED_BLK    (~(0ULL))
+
+#define FTL_MAPPING_PGE 0
+#define FTL_MAPPING_BLK 1
+#define FTL_MAPPING_HYB 2
+#define FTL_MAPPING_TBL_MODE FTL_MAPPING_BLK 
 
 enum {
     NAND_READ =  0,
@@ -67,6 +73,11 @@ struct ppa {
 
         uint64_t ppa;
     };
+};
+
+struct pba {
+    struct ppa ppa;
+    uint64_t *map;
 };
 
 typedef int nand_sec_status_t;
@@ -154,6 +165,7 @@ struct ssdparams {
     int tt_pls;       /* total # of planes in the SSD */
 
     int tt_luns;      /* total # of LUNs in the SSD */
+    uint64_t pg_mask_bits; /* number of bits for page offset */
 };
 
 typedef struct line {
@@ -194,6 +206,7 @@ struct nand_cmd {
     int64_t stime; /* Coperd: request arrival time */
 };
 
+#if FTL_MAPPING_TBL_MODE==FTL_MAPPING_PGE
 struct ssd {
     char *ssdname;
     struct ssdparams sp;
@@ -209,6 +222,25 @@ struct ssd {
     bool *dataplane_started_ptr;
     QemuThread ftl_thread;
 };
+#endif
+
+#if FTL_MAPPING_TBL_MODE==FTL_MAPPING_BLK
+struct ssd {
+    char *ssdname;
+    struct ssdparams sp;
+    struct ssd_channel *ch;
+    struct pba *maptbl; /* block level mapping table */
+    uint64_t *rmap;     /* reverse mapptbl, assume it's stored in OOB */
+    struct write_pointer wp;
+    struct line_mgmt lm;
+
+    /* lockless ring for communication with NVMe IO thread */
+    struct rte_ring **to_ftl;
+    struct rte_ring **to_poller;
+    bool *dataplane_started_ptr;
+    QemuThread ftl_thread;
+};
+#endif
 
 void ssd_init(FemuCtrl *n);
 
